@@ -5,10 +5,10 @@ default: buffer
 
 %.o: %.c
 #$(HEADERS)
-	gcc -c $< -o $@
+	gcc -c $< -o $@ -lm
 
 buffer: $(OBJECTS)
-	gcc $(OBJECTS) -o $@
+	gcc $(OBJECTS) -o $@ -lm
 
 clean:
 	-rm -f $(OBJECTS)
