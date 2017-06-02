@@ -72,6 +72,7 @@ insert_edge(graph_t *graph,
 	graph->edges[vertex][graph->vertex[vertex].outdegree].vertex_conn = vertex_conn;
 	graph->edges[vertex][graph->vertex[vertex].outdegree].rtt = rtt;
 	graph->vertex[vertex].outdegree++;
+	graph->vertex[vertex].vid = vertex;
 
 	if (directed == false)
 		insert_edge(graph, vertex_conn, vertex, rtt, true);
@@ -142,7 +143,7 @@ get_throuput_rate(graph_t *graph)
 
 	return rate;
 }
-/*
+
 static int
 process_edge(int vertex,
 	     int next_vertex)
@@ -155,7 +156,7 @@ process_edge(int vertex,
 }
 
 static int
-process_vertex(int vertex)
+process_vertex(graph_t *graph)
 {
 	return 0;
 }
@@ -174,7 +175,7 @@ depth_first_search(graph_t *graph,
 
 	discovered[vertex] = true;
 
-	process_vertex(vertex);
+	process_vertex(graph);
 
 	for (counter = 0; counter < outdegree; counter++) {
 		next_vertex = graph->edges[vertex][counter].vertex_conn;
@@ -196,7 +197,7 @@ depth_first_search(graph_t *graph,
 
 	return 0;
 }
-*/
+
 static int
 print_graph(graph_t *graph)
 {
@@ -226,10 +227,12 @@ int main()
 	print_graph(graph);
 
 	rate = (unsigned int)get_throuput_rate(graph);
+
 	if(rate/_1Gb >= THROUGHPUT)
 		printf("\nOK\n");
-	else
-		printf("\nNOK\n");
+	else {
+		depth_first_search(graph,
+	}
 
 	free(graph);
 
