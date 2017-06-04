@@ -12,12 +12,18 @@
 #define DEFAULT      12                   /* IEEE 802.3bj standard considers acceptable
                                            * a Bit Error Rate (BER) of 1 in 1*10^12 bits */
 
-typedef enum { false, true } bool;
+typedef enum { 
+    false,
+    true
+} bool;
 
 bool processed[MAXV];                     /* which vertices have been processed */
 bool discovered[MAXV];                    /* which vertices have been found */
 bool finished = false;                    /* found all solutions yet? */
 int parent[MAXV];                         /* discovery relation */
+double pings[MAXV];                       /* round trip times */
+double rating[MAXV];                      /* throuput rates */
+int links = 0;                            /* TCP links */
 
 typedef struct {
 	int vertex_conn;
@@ -27,17 +33,17 @@ typedef struct {
 
 typedef struct {
 	int vid;
-	int outdegree;                    /* outdegree of each vertex */
+	int outdegree;                        /* outdegree of each vertex */
 
 	bool has_buffer;
 	double buffer_size;
 } vertex_t;
 
 typedef struct {
-	edge_t edges[MAXV+1][MAXDEGREE];  /* adjacency info */
-	vertex_t vertex[MAXV+1];          /* vertices info */
-	int nvertices;                    /* number of vertices in graph */
-	int nedges;                       /* number of edges in graph */
+	edge_t edges[MAXV+1][MAXDEGREE];      /* adjacency info */
+	vertex_t vertex[MAXV+1];              /* vertices info */
+	int nvertices;                        /* number of vertices in graph */
+	int nedges;                           /* number of edges in graph */
 	double bit_error;
 } graph_t;
 
@@ -86,7 +92,7 @@ static int
 read_graph(graph_t *graph,
 	   bool directed)
 {
-	float exp;
+	float exponent;
 	int counter;
 	int nedges;
 	int vertex, vertex_conn;
@@ -104,44 +110,39 @@ read_graph(graph_t *graph,
 	}
 
 	printf("bit error = 1 in 10 ^ (-X)\n");
-	scanf("%f", &exp);
+	scanf("%f", &exponent);
 
-	if(exp == 0)
-		exp = DEFAULT;
+	if(exponent == 0)
+		exponent = DEFAULT;
 
-	exp = exp/2;
-	graph->bit_error = pow(10, exp);
+	exponent = exponent/2;
+	graph->bit_error = pow(10, exponent);
 
 	return 0;
-}
-
-static double
-get_total_rtt(graph_t *graph)
-{
-	int i, j;
-	double rtt = 0;
-
-	for (i = 0; i < graph->nedges; i++)
-		for (j = 0; j < graph->nvertices; j++)
-			rtt += graph->edges[i][j].rtt/2;
-
-	return rtt;
 }
 
 /*
  * Rate <= (MSS/RTT)*(1 / sqrt{error})
  */
 
-static double
-get_throuput_rate(graph_t *graph)
+static void
+get_throuput_rate(graph_t *graph, int i, int j)
 {
-	double rtt;
-	double rate;
+	for (i = i; i < graph->nedges; i++) {
+		for (j = j; j < graph->nvertices; j++) {
+            pings[links] += graph->edges[i][j].rtt/2;
 
-	rtt = get_total_rtt(graph);
-	rate = (MSS/rtt)*graph->bit_error;
+            if (graph->vertex[i].has_buffer == true) {
+                links++;
+                get_throuput_rate(graph, i, j);
+            }
+        }
+    }
 
-	return rate;
+    int x;
+
+    for (x = 0; x <= links; x++)
+	    rating[links] = (MSS/pings[links])*graph->bit_error;
 }
 
 static int
@@ -156,9 +157,20 @@ process_edge(int vertex,
 }
 
 static int
-process_vertex(graph_t *graph)
+process_vertex(graph_t *graph, int vertice)
 {
+    if (graph->vertex[vertice].has_buffer == false)
+        graph->vertex[vertice].has_buffer = true;
+    else
+        graph->vertex[vertice].has_buffer = false;
+
 	return 0;
+}
+
+static bool
+valid_edge(int vertex_conn)
+{
+    return true;
 }
 
 static int
@@ -171,11 +183,11 @@ depth_first_search(graph_t *graph,
 	int outdegree = graph->vertex[vertice].outdegree;
 
 	if (finished)
-		return;
+		return 0;
 
 	discovered[vertex] = true;
 
-	process_vertex(graph);
+	process_vertex(graph, vertex);
 
 	for (counter = 0; counter < outdegree; counter++) {
 		next_vertex = graph->edges[vertex][counter].vertex_conn;
@@ -184,14 +196,18 @@ depth_first_search(graph_t *graph,
 
 			if (discovered[next_vertex] == false) {
 				parent[next_vertex] = vertex;
+
+	            rating[links] = (unsigned int)get_throuput_rate(graph);
+
+	            process_vertex(graph, vertex);    
 				depth_first_search(graph, next_vertex);
 
 			} else if (processed[next_vertex] == false)
-				process_edge(vertex, next_vertex);
+	            process_edge(vertex, next_vertex);
 		}
 
 		if (finished)
-			return;
+			return 0;
 	}
 	processed[vertex] = true;
 
@@ -222,17 +238,17 @@ int main()
 
 	graph = malloc(sizeof(graph_t));
 	memset(graph, 0, sizeof(graph));
+    memset(rating, 0, sizeof(rating));
 
 	read_graph(graph, false);
 	print_graph(graph);
 
-	rate = (unsigned int)get_throuput_rate(graph);
+	rate = (unsigned int)get_throuput_rate(graph, 0, 0);
 
 	if(rate/_1Gb >= THROUGHPUT)
 		printf("\nOK\n");
-	else {
-		depth_first_search(graph,
-	}
+	else
+		depth_first_search(graph, 2);
 
 	free(graph);
 
