@@ -3,32 +3,38 @@
 #include <string.h>
 #include <math.h>
 
-#define _1Gb         1000000              /* 1 gigabit */
-#define THROUGHPUT   21                   /* 21Gbps is the minimal */
-#define MAXV         100                  /* maximum number of vertices */
-#define MAXDEGREE    50                   /* maximum vertex outdegree */
-#define MSS          9000                 /* maximum segment size in bytes */
-#define WIN          64                   /* maximum or required buffer size in KBytes */
-#define DEFAULT      12                   /* IEEE 802.3bj standard considers acceptable
-                                           * a Bit Error Rate (BER) of 1 in 1*10^12 bits */
+#define _1Gb         1000000                  /* 1 gigabit */
+#define THROUGHPUT   21                       /* 21Gbps is the minimal */
+#define MAXV         100                      /* maximum number of vertices */
+#define MAXDEGREE    50                       /* maximum vertex outdegree */
+#define MSS          9000                     /* maximum segment size in bytes */
+#define WIN          64                       /* maximum or required buffer size in KBytes */
+#define DEFAULT      12                       /* IEEE 802.3bj standard considers acceptable
+                                               * a Bit Error Rate (BER) of 1 in 1*10^12 bits */
 
 typedef enum { 
     false,
     true
 } bool;
 
-bool processed[MAXV];                     /* which vertices have been processed */
-bool discovered[MAXV];                    /* which vertices have been found */
-bool finished = false;                    /* found all solutions yet? */
-int parent[MAXV];                         /* discovery relation */
-double pings[MAXV];                       /* round trip times */
-double rating[MAXV];                      /* throuput rates */
-int links = 0;                            /* TCP links */
+bool processed[MAXV];                         /* which vertices have been processed */
+bool discovered[MAXV];                        /* which vertices have been found */
+bool finished = false;                        /* found all solutions yet? */
+int parent[MAXV];                             /* discovery relation */
+int links = 0;                                /* TCP session no */
+int cases = 0;                                /* Test cases no */
+
+typedef struct {
+	double rtt[links];
+	double rate[links];
+	double bit_error;
+} case_t;
 
 typedef struct {
 	int vertex_conn;
 
 	double rtt;
+	double bit_error;
 } edge_t;
 
 typedef struct {
@@ -36,15 +42,14 @@ typedef struct {
 	int outdegree;                        /* outdegree of each vertex */
 
 	bool has_buffer;
-	double buffer_size;
 } vertex_t;
 
 typedef struct {
 	edge_t edges[MAXV+1][MAXDEGREE];      /* adjacency info */
 	vertex_t vertex[MAXV+1];              /* vertices info */
+	case_t test_case[cases];              /* TCP sessions to test */
 	int nvertices;                        /* number of vertices in graph */
 	int nedges;                           /* number of edges in graph */
-	double bit_error;
 } graph_t;
 
 static int
@@ -59,7 +64,6 @@ initialize_graph(graph_t *graph)
 		graph->vertex[counter].vid = 0;
 		graph->vertex[counter].outdegree = 0;
 		graph->vertex[counter].has_buffer = false;
-		graph->vertex[counter].buffer_size = 0;
 	}
 
 	return 0;
@@ -116,7 +120,7 @@ read_graph(graph_t *graph,
 		exponent = DEFAULT;
 
 	exponent = exponent/2;
-	graph->bit_error = pow(10, exponent);
+	graph->test_case[cases].bit_error = pow(10, exponent);
 
 	return 0;
 }
@@ -130,19 +134,20 @@ get_throuput_rate(graph_t *graph, int i, int j)
 {
 	for (i = i; i < graph->nedges; i++) {
 		for (j = j; j < graph->nvertices; j++) {
-            pings[links] += graph->edges[i][j].rtt/2;
+			graph->test_case[cases].rtt[links] += graph->edges[i][j].rtt/2;
 
-            if (graph->vertex[i].has_buffer == true) {
-                links++;
-                get_throuput_rate(graph, i, j);
-            }
-        }
-    }
+			if (graph->vertex[j].has_buffer == true) {
+				links++;
+				get_throuput_rate(graph, i, j);
+			}
+		}
+	}
 
-    int x;
+	int x;
 
-    for (x = 0; x <= links; x++)
-	    rating[links] = (MSS/pings[links])*graph->bit_error;
+	for (x = 0; x <= cases; x++)
+		graph->test_case[cases].rate[links] =
+			(MSS/graph->test_case[cases].rtt[links])*graph->test_case[cases].bit_error;
 }
 
 static int
@@ -159,10 +164,10 @@ process_edge(int vertex,
 static int
 process_vertex(graph_t *graph, int vertice)
 {
-    if (graph->vertex[vertice].has_buffer == false)
-        graph->vertex[vertice].has_buffer = true;
-    else
-        graph->vertex[vertice].has_buffer = false;
+	if (graph->vertex[vertice].has_buffer == false)
+		graph->vertex[vertice].has_buffer = true;
+	else
+		graph->vertex[vertice].has_buffer = false;
 
 	return 0;
 }
@@ -197,13 +202,13 @@ depth_first_search(graph_t *graph,
 			if (discovered[next_vertex] == false) {
 				parent[next_vertex] = vertex;
 
-	            rating[links] = (unsigned int)get_throuput_rate(graph);
+				rating[links] = (unsigned int)get_throuput_rate(graph);
 
-	            process_vertex(graph, vertex);    
+				process_vertex(graph, vertex);    
 				depth_first_search(graph, next_vertex);
 
 			} else if (processed[next_vertex] == false)
-	            process_edge(vertex, next_vertex);
+				process_edge(vertex, next_vertex);
 		}
 
 		if (finished)
@@ -238,7 +243,6 @@ int main()
 
 	graph = malloc(sizeof(graph_t));
 	memset(graph, 0, sizeof(graph));
-    memset(rating, 0, sizeof(rating));
 
 	read_graph(graph, false);
 	print_graph(graph);
